@@ -1,0 +1,37 @@
+---
+- name: Set vm.max_map_count for Elasticsearch
+  sysctl:
+    name: vm.max_map_count
+    value: '262144'
+    sysctl_set: true
+    state: present
+    reload: true
+
+- name: Create /opt/elk directory
+  file:
+    path: /opt/elk
+    state: directory
+    mode: '0755'
+
+- name: Create /opt/consumer directory
+  file:
+    path: /opt/consumer
+    state: directory
+    mode: '0755'
+
+- name: Sync consumer source to ELK host
+  synchronize:
+    src: ../consumer/
+    dest: /opt/consumer/
+    delete: true
+
+- name: Deploy ELK docker-compose
+  template:
+    src: docker-compose.yml.j2
+    dest: /opt/elk/docker-compose.yml
+    mode: '0644'
+
+- name: Start ELK stack
+  command: docker compose up -d --build
+  args:
+    chdir: /opt/elk
