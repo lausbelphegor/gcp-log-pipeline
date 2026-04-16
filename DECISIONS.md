@@ -93,11 +93,37 @@ State is stored in `gs://gcp-log-pipeline-tfstate-lausbelphegor/log-pipeline/sta
 
 The Terraform service account has four roles: `compute.admin`, `iam.serviceAccountUser`, `storage.admin`, `serviceusage.serviceUsageConsumer`. It does not have `roles/editor`. These four roles cover everything this Terraform config currently does. If a new resource type is added, add the required role explicitly rather than escalating to `roles/editor`.
 
+### State locking via GCS use_lockfile
+
+**Status:** accepted
+
+`backend.tf` sets `use_lockfile = true`, which makes the GCS backend use object-generation conditional writes as a lock primitive. Concurrent `terraform apply` runs fail fast instead of racing on state. This is the native GCS locking mechanism — no separate lock table (DynamoDB-style) is needed.
+
 ### Static JSON key for Terraform credentials
 
 **Status:** shortcut
 
 A service account JSON key at `terraform/credentials.json` is the fastest path for local development. It is gitignored. The production alternative is Application Default Credentials or Workload Identity Federation (for CI/CD), neither of which requires a key file on disk. The key has no expiry — rotate it if the repo becomes shared or if the file is ever accidentally exposed.
+
+### Labels on compute instances but not VPC
+
+**Status:** accepted
+
+All three requested labels (`project`, `env`, `managed_by`) are applied to both GCE instances in `compute.tf`. `google_compute_network` does not support a `labels` argument in the `hashicorp/google ~> 5.0` provider — `terraform validate` rejects it. Labels on the instances are sufficient for cost attribution and inventory queries in the GCP console.
+
+### Dedicated service accounts for VMs
+
+**Status:** accepted
+
+`kafka-instance` and `elk-instance` each run as their own service account (`kafka-vm-sa`, `elk-vm-sa`), defined in `iam.tf` with no project-level role bindings. The OAuth scopes are narrowed to `logging.write` and `monitoring.write` — the minimum needed to ship logs and metrics. No GCP API calls are made from the VMs today, so the empty role set is not a regression in functionality.
+
+The default Compute Engine service account would work just as well for "make no API calls," but it is the wrong default for three reasons:
+
+1. **Least privilege.** The default SA carries broad editor-equivalent permissions when combined with the `cloud-platform` scope. Even without calls being made today, a compromised VM inherits those rights the moment an attacker runs `gcloud` on the box.
+2. **Audit clarity.** Per-VM identities appear distinctly in Cloud Audit Logs. A shared default SA muddies attribution — you cannot tell from an audit entry which host performed an action.
+3. **Future-proofing.** Adding a narrowly scoped role to a dedicated SA is additive and reversible. Revoking scope from a shared SA is not — other workloads depend on it.
+
+This is cheap to set up and strictly stronger than the default, so it is enabled even though the demo does not exercise it.
 
 ### Output names are a stable interface
 
