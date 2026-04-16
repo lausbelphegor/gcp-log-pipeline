@@ -1,0 +1,21 @@
+---
+- name: Install Docker on all hosts
+  hosts: all
+  become: true
+  tags: docker
+  roles:
+    - docker
+
+- name: Deploy Kafka
+  hosts: kafka
+  become: true
+  tags: kafka
+  roles:
+    - kafka
+
+- name: Deploy ELK stack
+  hosts: elk
+  become: true
+  tags: elk
+  roles:
+    - elk

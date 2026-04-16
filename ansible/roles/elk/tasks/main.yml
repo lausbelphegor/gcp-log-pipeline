@@ -1,0 +1,39 @@
+---
+- name: Set vm.max_map_count for Elasticsearch
+  sysctl:
+    name: vm.max_map_count
+    value: "262144"
+    state: present
+    reload: true
+
+- name: Create /opt/elk directory
+  file:
+    path: /opt/elk
+    state: directory
+    mode: "0755"
+
+- name: Create /opt/consumer directory
+  file:
+    path: /opt/consumer
+    state: directory
+    owner: debian
+    mode: "0755"
+
+- name: Sync consumer source to ELK host
+  synchronize:
+    src: "{{ playbook_dir }}/../consumer/"
+    dest: /opt/consumer/
+    delete: true
+
+- name: Deploy ELK docker-compose
+  template:
+    src: docker-compose.yml.j2
+    dest: /opt/elk/docker-compose.yml
+    mode: "0644"
+  vars:
+    kafka_private_ip: "{{ hostvars[groups['kafka'][0]]['kafka_private_ip'] }}"
+
+- name: Start ELK stack
+  command: docker compose up -d --build
+  args:
+    chdir: /opt/elk
