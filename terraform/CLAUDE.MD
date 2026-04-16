@@ -12,6 +12,7 @@ Provisions all GCP infrastructure for gcp-log-pipeline.
 | `terraform.tfvars` | Your values for `project_id` and `your_ip` — gitignored, never commit |
 | `network.tf`       | VPC, subnet, all firewall rules                                       |
 | `compute.tf`       | GCE instances and disk config                                         |
+| `iam.tf`           | Dedicated per-VM service accounts (kafka-vm-sa, elk-vm-sa)            |
 | `outputs.tf`       | Public/private IPs — consumed by Ansible inventory script             |
 | `credentials.json` | GCP SA key — gitignored, never read or print this file                |
 
@@ -52,7 +53,7 @@ elk_private_ip
 Remote state lives in GCS at:
 `gs://gcp-log-pipeline-tfstate-lausbelphegor/log-pipeline/state`
 
-Do not run `terraform apply` from two places simultaneously — there is no state locking configured (DynamoDB-style locking is AWS; GCS backend supports object locking but it is not configured here). Single-developer project, this is fine.
+State locking is enabled via `use_lockfile = true` in `backend.tf`. The GCS backend uses object-generation conditional writes as the lock primitive — concurrent `terraform apply` runs will fail fast rather than race on state.
 
 ## IAM
 
