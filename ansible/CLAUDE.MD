@@ -76,7 +76,7 @@ Both kafka and elk roles use `.j2` templates, not static files:
 
 **elk role** — `roles/elk/templates/docker-compose.yml.j2`
 
-- Variable: `{{ kafka_private_ip }}` → substituted with `hostvars[groups['kafka'][0]]['ansible_host']`
+- Variable: `{{ kafka_private_ip }}` → substituted with `hostvars[groups['kafka'][0]]['kafka_private_ip']` (explicit host var written by gen_inventory.sh; `ansible_host` is the public SSH IP and must not be used here — that would route consumer traffic to the public internet instead of the VPC)
 - Used in: consumer `KAFKA_BOOTSTRAP` environment variable
 - Note: consumer uses private IP to keep traffic inside the VPC
 
