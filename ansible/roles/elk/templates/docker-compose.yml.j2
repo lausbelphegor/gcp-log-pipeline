@@ -6,6 +6,12 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=false
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
     ports:
       - "9200:9200"
     restart: unless-stopped
@@ -32,3 +38,6 @@ services:
       - ES_HOST=http://elasticsearch:9200
       - KAFKA_TOPIC=app-logs
     restart: unless-stopped
+
+volumes:
+  esdata:

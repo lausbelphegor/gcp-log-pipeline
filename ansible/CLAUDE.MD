@@ -121,3 +121,5 @@ ansible elk -i inventory.ini -a "docker logs elk-consumer-1 --tail 50" --become
 - The Kafka `KAFKA_LISTENERS` line — both listeners must be declared explicitly, removing either breaks the external or internal path
 - `vm.max_map_count` task — ES will not start without it
 - The `synchronize` task in elk role — removing it breaks the consumer Docker build
+- The `ulimits: memlock` on elasticsearch — pairs with vm.max_map_count; ES becomes unstable without it
+- The `esdata` named volume — removing it causes all indexed data to be lost on every container restart

@@ -16,7 +16,8 @@
   file:
     path: /opt/consumer
     state: directory
-    owner: debian
+    owner: root
+    group: root
     mode: "0755"
 
 - name: Sync consumer source to ELK host

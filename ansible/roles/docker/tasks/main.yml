@@ -1,4 +1,10 @@
 ---
+- name: Install rsync (required for Ansible synchronize module)
+  apt:
+    name: rsync
+    state: present
+    update_cache: true
+
 - name: Install apt prerequisites
   apt:
     name:
