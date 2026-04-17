@@ -1,0 +1,35 @@
+---
+- name: Create /opt/kafka directory
+  file:
+    path: /opt/kafka
+    state: directory
+    mode: "0755"
+
+- name: Deploy Kafka docker-compose
+  template:
+    src: docker-compose.yml.j2
+    dest: /opt/kafka/docker-compose.yml
+    mode: "0644"
+  vars:
+    kafka_public_ip: "{{ ansible_host }}"
+
+- name: Start Kafka stack
+  command: docker compose up -d
+  args:
+    chdir: /opt/kafka
+
+- name: Wait for Kafka broker to be ready
+  command: docker exec kafka-kafka-1 kafka-topics --bootstrap-server localhost:9092 --list
+  register: kafka_ready
+  until: kafka_ready.rc == 0
+  retries: 30
+  delay: 5
+
+- name: Create app-logs topic
+  command: >
+    docker exec kafka-kafka-1
+    kafka-topics --bootstrap-server localhost:9092
+    --create --if-not-exists
+    --topic app-logs
+    --partitions 3
+    --replication-factor 1

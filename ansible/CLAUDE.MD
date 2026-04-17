@@ -76,7 +76,7 @@ Both kafka and elk roles use `.j2` templates, not static files:
 
 **elk role** — `roles/elk/templates/docker-compose.yml.j2`
 
-- Variable: `{{ kafka_private_ip }}` → substituted with `hostvars[groups['kafka'][0]]['ansible_host']`
+- Variable: `{{ kafka_private_ip }}` → substituted with `hostvars[groups['kafka'][0]]['kafka_private_ip']` (explicit host var written by gen_inventory.sh; `ansible_host` is the public SSH IP and must not be used here — that would route consumer traffic to the public internet instead of the VPC)
 - Used in: consumer `KAFKA_BOOTSTRAP` environment variable
 - Note: consumer uses private IP to keep traffic inside the VPC
 
@@ -121,3 +121,5 @@ ansible elk -i inventory.ini -a "docker logs elk-consumer-1 --tail 50" --become
 - The Kafka `KAFKA_LISTENERS` line — both listeners must be declared explicitly, removing either breaks the external or internal path
 - `vm.max_map_count` task — ES will not start without it
 - The `synchronize` task in elk role — removing it breaks the consumer Docker build
+- The `ulimits: memlock` on elasticsearch — pairs with vm.max_map_count; ES becomes unstable without it
+- The `esdata` named volume — removing it causes all indexed data to be lost on every container restart
