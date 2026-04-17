@@ -34,7 +34,7 @@ services:
     depends_on:
       - elasticsearch
     environment:
-      - KAFKA_BOOTSTRAP={{ kafka_private_ip }}:9092
+      - KAFKA_BOOTSTRAP={{ kafka_private_ip }}:19092
       - ES_HOST=http://elasticsearch:9200
       - KAFKA_TOPIC=app-logs
     restart: unless-stopped

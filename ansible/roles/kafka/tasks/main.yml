@@ -12,6 +12,7 @@
     mode: "0644"
   vars:
     kafka_public_ip: "{{ ansible_host }}"
+    kafka_private_ip: "{{ hostvars[inventory_hostname]['kafka_private_ip'] }}"
 
 - name: Start Kafka stack
   command: docker compose up -d
