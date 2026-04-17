@@ -29,7 +29,7 @@ resource "google_compute_firewall" "allow_internal" {
   network = google_compute_network.pipeline_vpc.name
   allow {
     protocol = "tcp"
-    ports    = ["9092", "9200", "2181", "29092"]
+    ports    = ["9092", "9200", "2181", "29092", "19092"]
   }
   source_ranges = ["10.0.1.0/24"]
 }
