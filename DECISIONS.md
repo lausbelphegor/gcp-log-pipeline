@@ -59,6 +59,16 @@ The consumer on the ELK host connects to Kafka on port `9092` via the Kafka inst
 
 Both `KAFKA_LISTENERS` and `KAFKA_ADVERTISED_LISTENERS` are set explicitly. Removing or merging them breaks either the external producer path or the internal broker path.
 
+### Kafka admin commands target the INTERNAL listener
+
+**Status:** accepted
+
+The Ansible kafka role runs readiness checks and topic creation via `docker exec kafka-kafka-1 kafka-topics --bootstrap-server kafka:29092 ...`, not `localhost:9092`. Both commands execute inside the container's network namespace, where `kafka:29092` resolves to the container's internal Docker network address.
+
+If `localhost:9092` (the EXTERNAL listener) were used, the admin client would connect successfully, receive the advertised address `<kafka_public_ip>:9092`, and then try to reconnect to that public IP — which is not routable from inside the container. The client times out with "Timed out waiting for a node assignment" even though the broker is fully healthy.
+
+This is a common trap with dual-listener Kafka setups. The rule: commands originating inside the broker's container network use the INTERNAL listener; the producer running from outside the VPC uses the EXTERNAL listener.
+
 ### Public IPs on both VMs
 
 **Status:** shortcut
@@ -130,6 +140,16 @@ This is cheap to set up and strictly stronger than the default, so it is enabled
 **Status:** accepted
 
 `terraform/outputs.tf` exports `kafka_public_ip`, `kafka_private_ip`, `elk_public_ip`, `elk_private_ip`. These names are consumed by `ansible/gen_inventory.sh` by exact string match. Renaming them requires updating the shell script. They are documented as an interface, not implementation details.
+
+### Base image resolved via data source, not pinned
+
+**Status:** shortcut
+
+`compute.tf` uses `data.google_compute_image.debian` to resolve the latest Debian 12 image at plan time. Because the Debian project publishes new point images roughly monthly, any `terraform plan` run after a new image is published shows both VMs as requiring replacement — a forced disk rebuild triggers an instance rebuild.
+
+This is convenient for a demo (always-current patches, one fewer thing to maintain) but wrong for production. Known failure modes: firewall-rule-only changes unexpectedly destroy and recreate the VMs if an image rotation happened in between; drift between environments if applies happen on different days; loss of any host-local state on every image bump.
+
+The production fix is one of: pin to a specific `debian-12-bookworm-vYYYYMMDD` image and rotate explicitly; build a custom image with Packer; or use a managed instance group with a specific image version. None of these are worth the complexity for a demo that can rebuild from scratch in under five minutes.
 
 ---
 
