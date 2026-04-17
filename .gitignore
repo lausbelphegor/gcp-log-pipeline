@@ -10,3 +10,13 @@ override.tf.json
 *_override.tf.json
 notes.md
 terraform/terraform.tfvars
+
+# Ansible
+ansible/inventory.ini
+
+# Python / runtime / generated
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.log
