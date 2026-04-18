@@ -51,7 +51,7 @@ ansible all -i inventory.ini -m ping
 
 - Runs on: kafka host
 - Deploys `/opt/kafka/docker-compose.yml` from a Jinja2 template
-- The template substitutes `{{ kafka_public_ip }}` with `ansible_host` — this is the Kafka external advertised listener
+- The template substitutes `{{ kafka_public_ip }}` (from `ansible_host`) for the EXTERNAL listener and `{{ kafka_private_ip }}` (from inventory host var) for the BROKER listener
 - Starts the stack with `docker compose up -d`
 - Waits for broker readiness (retries kafka-topics --list)
 - Creates `app-logs` topic (3 partitions, replication-factor 1)
@@ -71,14 +71,16 @@ Both kafka and elk roles use `.j2` templates, not static files:
 
 **kafka role** — `roles/kafka/templates/docker-compose.yml.j2`
 
-- Variable: `{{ kafka_public_ip }}` → substituted with `ansible_host` (the public IP Ansible is connecting through)
-- Used in: `KAFKA_ADVERTISED_LISTENERS` external listener
+- Variable: `{{ kafka_public_ip }}` → `ansible_host` (the public IP Ansible is connecting through)
+  - Used in: EXTERNAL advertised listener (`EXTERNAL://<public_ip>:9092`)
+- Variable: `{{ kafka_private_ip }}` → `hostvars[inventory_hostname]['kafka_private_ip']` (written by `gen_inventory.sh` as a host var on the kafka entry)
+  - Used in: BROKER advertised listener (`BROKER://<private_ip>:19092`)
 
 **elk role** — `roles/elk/templates/docker-compose.yml.j2`
 
-- Variable: `{{ kafka_private_ip }}` → substituted with `hostvars[groups['kafka'][0]]['kafka_private_ip']` (explicit host var written by gen_inventory.sh; `ansible_host` is the public SSH IP and must not be used here — that would route consumer traffic to the public internet instead of the VPC)
-- Used in: consumer `KAFKA_BOOTSTRAP` environment variable
-- Note: consumer uses private IP to keep traffic inside the VPC
+- Variable: `{{ kafka_private_ip }}` → `hostvars[groups['kafka'][0]]['kafka_private_ip']` (explicit host var written by `gen_inventory.sh`; `ansible_host` is the public SSH IP and must not be used here — that would route consumer traffic to the public internet instead of the VPC)
+- Used in: consumer `KAFKA_BOOTSTRAP` environment variable (format `<kafka_private_ip>:19092`)
+- Note: consumer uses the private IP + port 19092 (the BROKER listener) to keep traffic inside the VPC
 
 ## Consumer source sync
 
@@ -118,7 +120,7 @@ ansible elk -i inventory.ini -a "docker logs elk-consumer-1 --tail 50" --become
 ## Do not modify
 
 - `inventory.ini` — always generated, edits will be overwritten
-- The Kafka `KAFKA_LISTENERS` line — both listeners must be declared explicitly, removing either breaks the external or internal path
+- The Kafka `KAFKA_LISTENERS` and `KAFKA_ADVERTISED_LISTENERS` lines — all three listeners (EXTERNAL, BROKER, INTERNAL) must be declared explicitly; each serves a different network zone (external producer, VPC consumer, container-internal admin)
 - `vm.max_map_count` task — ES will not start without it
 - The `synchronize` task in elk role — removing it breaks the consumer Docker build
 - The `ulimits: memlock` on elasticsearch — pairs with vm.max_map_count; ES becomes unstable without it

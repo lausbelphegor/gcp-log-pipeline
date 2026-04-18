@@ -8,7 +8,7 @@ Reads events from Kafka and indexes them into Elasticsearch. Runs on the ELK GCE
 | ------------------ | ---------------------------------------------- |
 | `consumer.py`      | Main application                               |
 | `Dockerfile`       | Builds from `python:3.12-slim`                 |
-| `requirements.txt` | `kafka-python==2.0.2`, `elasticsearch==8.13.0` |
+| `requirements.txt` | `kafka-python==2.2.11`, `elasticsearch==8.13.0` |
 
 ## Deployment
 
@@ -38,7 +38,7 @@ Set by Ansible in `/opt/elk/docker-compose.yml` at deploy time:
 
 | Variable          | Value                       | Notes                                    |
 | ----------------- | --------------------------- | ---------------------------------------- |
-| `KAFKA_BOOTSTRAP` | `<kafka_private_ip>:9092`   | Private IP — traffic stays inside VPC    |
+| `KAFKA_BOOTSTRAP` | `<kafka_private_ip>:19092`  | Private IP + BROKER listener port — traffic stays inside VPC |
 | `ES_HOST`         | `http://elasticsearch:9200` | Docker Compose service name              |
 | `KAFKA_TOPIC`     | `app-logs`                  | Must match producer and Kafka topic name |
 
@@ -75,7 +75,7 @@ Consumer group ID: `elk-consumer-group`
 
 This means offsets are committed to Kafka. If the consumer restarts, it resumes from where it left off. If you want to reprocess all events from the beginning, either:
 
-- Delete the consumer group: `docker exec kafka-kafka-1 kafka-consumer-groups --bootstrap-server localhost:9092 --delete --group elk-consumer-group`
+- Delete the consumer group: `docker exec kafka-kafka-1 kafka-consumer-groups --bootstrap-server kafka:29092 --delete --group elk-consumer-group`
 - Or delete and recreate the ES index, then restart the consumer
 
 ## Indexing behavior
