@@ -46,19 +46,6 @@ No fault tolerance anywhere in the pipeline. One host failure takes everything d
 
 ## Networking
 
-### Dual Kafka listeners
-
-**Status:** accepted
-
-The broker runs two listeners:
-
-- `EXTERNAL://0.0.0.0:9092` — advertised as `<kafka_public_ip>:9092` — used by the local producer over the public internet
-- `INTERNAL://0.0.0.0:29092` — advertised as `kafka:29092` — used within the Kafka host's Docker network, for example by tooling containers running alongside the broker
-
-The consumer on the ELK host connects to Kafka on port `9092` via the Kafka instance's **private IP**, keeping that traffic inside the VPC. This is not the same path as the `INTERNAL` listener, which only operates within the Kafka container network.
-
-Both `KAFKA_LISTENERS` and `KAFKA_ADVERTISED_LISTENERS` are set explicitly. Removing or merging them breaks either the external producer path or the internal broker path.
-
 ### Kafka admin commands target the INTERNAL listener
 
 **Status:** accepted
@@ -68,6 +55,20 @@ The Ansible kafka role runs readiness checks and topic creation via `docker exec
 If `localhost:9092` (the EXTERNAL listener) were used, the admin client would connect successfully, receive the advertised address `<kafka_public_ip>:9092`, and then try to reconnect to that public IP — which is not routable from inside the container. The client times out with "Timed out waiting for a node assignment" even though the broker is fully healthy.
 
 This is a common trap with dual-listener Kafka setups. The rule: commands originating inside the broker's container network use the INTERNAL listener; the producer running from outside the VPC uses the EXTERNAL listener.
+
+### Three-listener Kafka setup: EXTERNAL, BROKER, INTERNAL
+
+**Status:** accepted
+
+The broker advertises three listeners on three distinct endpoints:
+
+- `EXTERNAL://<kafka_public_ip>:9092` — local producer from outside GCP, reaches the broker through the public IP via the `allow-kafka-external` firewall rule
+- `BROKER://<kafka_private_ip>:19092` — consumer on the ELK VM, reaches the broker over the VPC on a private IP, permitted by `allow-internal` which covers `10.0.1.0/24`
+- `INTERNAL://kafka:29092` — container-internal traffic on the Kafka host, used by admin commands run via `docker exec`
+
+A two-listener setup (EXTERNAL + INTERNAL) appears to work but silently breaks the consumer. The consumer bootstraps successfully to `<private_ip>:9092`, but the broker responds with its EXTERNAL advertised address `<public_ip>:9092` — which the consumer's VM cannot reach because `allow-kafka-external` permits only the operator's home IP. The consumer then tries the INTERNAL address `kafka:29092`, a Docker-local hostname unresolvable outside the broker's compose network. With both advertised endpoints unreachable, kafka-python silently retries forever inside `for msg in consumer:` without raising, and the consumer appears healthy while indexing zero documents.
+
+Adding a dedicated BROKER listener on the private IP on a separate port is the textbook solution. Each listener has one job: one network zone, one set of reachability assumptions. The alternative — adding the ELK VM's IP to `allow-kafka-external` and having the consumer share the producer's path — would work but couples consumer reachability to an external-firewall rule and conflates two different traffic classes.
 
 ### Public IPs on both VMs
 
@@ -206,6 +207,12 @@ Events are indexed one at a time with `es.index()`. At ~2–10 events/second, bu
 **Status:** accepted
 
 `time.sleep(random.uniform(0.1, 0.5))` between events is intentional. ES on `e2-medium` with 1 GB heap under sustained high ingest will fall behind and eventually OOM. The sleep keeps the demo stable. The rate can be changed via the sleep values in `producer.py` if needed, but do not remove it entirely.
+
+### kafka-python pinned to 2.2.x for Python 3.12+ compatibility
+
+**Status:** accepted
+
+`kafka-python` 2.0.2 (released 2020) uses `kafka.vendor.six.moves`, which relies on import hacks removed in Python 3.12. The producer — running locally, often on Python 3.13 — fails on import with `ModuleNotFoundError: No module named 'kafka.vendor.six.moves'`. The consumer container runs on `python:3.12-slim` where 2.0.2 still imports, but version drift between producer and consumer is a maintenance trap. Both pin to 2.2.11, the current maintained release with the Python 3.12+ fixes.
 
 ---
 

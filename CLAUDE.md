@@ -59,25 +59,28 @@ ansible-playbook -i inventory.ini playbook.yml --tags elk
 | `allow-ssh` | 22 | `var.your_ip` |
 | `allow-kafka-external` | 9092 | `var.your_ip` (producer needs this) |
 | `allow-kibana` | 5601 | `var.your_ip` |
-| `allow-internal` | 9092, 9200, 2181, 29092 | `10.0.1.0/24` (VPC only) |
+| `allow-internal` | 9092, 9200, 2181, 29092, 19092 | `10.0.1.0/24` (VPC only) |
 
 ## Kafka listener model
 
-The broker runs two listeners:
-- `EXTERNAL://0.0.0.0:9092` — advertised as `<kafka_public_ip>:9092` — used by the local producer
-- `INTERNAL://0.0.0.0:29092` — advertised as `kafka:29092` — used by the consumer inside the ELK compose network
+The broker runs three listeners for three distinct traffic classes:
 
-Both `KAFKA_LISTENERS` and `KAFKA_ADVERTISED_LISTENERS` must be set explicitly. Do not remove or merge them — the dual-listener config is required because the producer runs outside GCP and the consumer runs inside the same Docker network as ES.
+- `EXTERNAL://0.0.0.0:9092` — advertised as `<kafka_public_ip>:9092` — used by the local producer over the public internet
+- `BROKER://0.0.0.0:19092` — advertised as `<kafka_private_ip>:19092` — used by the consumer on the ELK VM over the VPC
+- `INTERNAL://0.0.0.0:29092` — advertised as `kafka:29092` — used by admin commands via `docker exec` inside the broker's container network
+
+All three of `KAFKA_LISTENERS`, `KAFKA_ADVERTISED_LISTENERS`, and `KAFKA_LISTENER_SECURITY_PROTOCOL_MAP` must be set explicitly. See `DECISIONS.md` "Three-listener Kafka setup" for the full rationale.
 
 ## Service ports
 
-| Service | Host | Port | Reachable from |
-|---|---|---|---|
-| Zookeeper | kafka-instance | 2181 | VPC only |
-| Kafka | kafka-instance | 9092 | your IP + VPC |
-| Kafka internal | kafka-instance | 29092 | Docker network only |
-| Elasticsearch | elk-instance | 9200 | VPC only |
-| Kibana | elk-instance | 5601 | your IP only |
+| Service                 | Host           | Port  | Reachable from        |
+| ----------------------- | -------------- | ----- | --------------------- |
+| Zookeeper               | kafka-instance | 2181  | VPC only              |
+| Kafka EXTERNAL listener | kafka-instance | 9092  | your IP only          |
+| Kafka BROKER listener   | kafka-instance | 19092 | VPC only              |
+| Kafka Docker-internal   | kafka-instance | 29092 | Docker network only   |
+| Elasticsearch           | elk-instance   | 9200  | VPC only              |
+| Kibana                  | elk-instance   | 5601  | your IP only          |
 
 ## Environment variables
 
@@ -89,7 +92,7 @@ KAFKA_TOPIC       Topic name             default: app-logs
 
 Consumer (set in Docker Compose env, templated by Ansible):
 ```
-KAFKA_BOOTSTRAP   Kafka private IP:9092
+KAFKA_BOOTSTRAP   Kafka private IP:19092
 ES_HOST           http://elasticsearch:9200
 KAFKA_TOPIC       app-logs
 ```
@@ -144,8 +147,9 @@ After a full deploy, verify in this order:
 1. `make inventory` completes without error
 2. SSH to both instances works: `ssh debian@<IP>`
 3. Kafka containers running: `ssh debian@KAFKA_IP "docker ps"`
-4. Topic exists: `ssh debian@KAFKA_IP "docker exec kafka-kafka-1 kafka-topics --bootstrap-server localhost:9092 --list"`
+4. Topic exists: `ssh debian@KAFKA_IP "docker exec kafka-kafka-1 kafka-topics --bootstrap-server kafka:29092 --list"`
 5. ES healthy: `curl http://ELK_IP:9200/_cluster/health` (from a machine with firewall access)
 6. Producer sends messages without error
 7. Kibana accessible at `http://ELK_IP:5601`
 8. Documents visible in Kibana Data View `app-logs`
+9. In Kibana, create a Data View with name `app-logs`, index pattern `app-logs`, time field `timestamp` (NOT `@timestamp`)

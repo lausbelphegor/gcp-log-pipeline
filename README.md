@@ -33,7 +33,7 @@ Two GCE instances in a custom VPC (`10.0.1.0/24`):
 **kafka-instance** (`e2-medium`, `europe-west1-b`)
 
 - Zookeeper on port 2181 (internal only)
-- Kafka broker on port 29092 (internal) and 9092 (external, your IP only)
+- Kafka broker on ports 9092 (external, your IP only), 19092 (VPC-internal, consumer), and 29092 (Docker-network-internal, admin)
 
 **elk-instance** (`e2-medium`, `europe-west1-b`)
 
@@ -41,7 +41,7 @@ Two GCE instances in a custom VPC (`10.0.1.0/24`):
 - Kibana on port 5601 (your IP only)
 - Python consumer (Docker container, built on host)
 
-The producer runs locally. It connects to Kafka on port `9092` via the Kafka instance's public IP. The consumer runs on the ELK host and connects to Kafka on port `9092` via the Kafka instance's private IP, keeping that traffic inside the VPC. Kafka is configured with two listeners — `EXTERNAL` advertised on the public IP for the producer, `INTERNAL` on the Docker network for intra-host broker communication — to handle both paths simultaneously.
+The producer runs locally. It connects to Kafka on port `9092` via the Kafka instance's public IP. The consumer runs on the ELK host and connects to Kafka on port `19092` via the Kafka instance's private IP, keeping that traffic inside the VPC. Kafka runs three listeners — EXTERNAL on the public IP for the producer, BROKER on the private IP for the consumer, INTERNAL on the Docker network for admin commands — so each traffic class has its own explicitly-advertised endpoint.
 
 Terraform state is stored remotely in GCS. Ansible inventory is generated from Terraform outputs — there are no manually maintained IP addresses anywhere in the repo.
 
@@ -59,6 +59,7 @@ Kafka decouples producers from the indexing pipeline. If Elasticsearch is slow o
 - Python 3.12
 - An SSH key at `~/.ssh/id_ed25519` (or set `ssh_pub_key_path` in `terraform.tfvars`)
 - A GCP project with billing enabled
+- Windows users: run from WSL (Ansible does not support Windows as a control node)
 
 ---
 
@@ -144,7 +145,7 @@ After a full deploy, verify in this order:
 # Kafka topic exists
 make inventory
 ansible kafka -i ansible/inventory.ini --become \
-  -a "docker exec kafka-kafka-1 kafka-topics --bootstrap-server localhost:9092 --list"
+  -a "docker exec kafka-kafka-1 kafka-topics --bootstrap-server kafka:29092 --list"
 
 # Elasticsearch healthy (9200 is internal-only — check via SSH)
 ansible elk -i ansible/inventory.ini --become \
@@ -229,6 +230,7 @@ This is a demo-tier deployment, not production-ready infrastructure. See [DECISI
 | `NoBrokersAvailable` from producer  | Kafka firewall or wrong advertised listener | Check `allow-kafka-external` firewall rule; verify Kafka public IP in compose |
 | ES container keeps restarting       | `vm.max_map_count` not set                  | `ssh debian@ELK_IP "sysctl vm.max_map_count"` should be 262144                |
 | Kibana unreachable on :5601         | Still starting up                           | Wait 90 seconds; check `docker logs elk-kibana-1`                             |
-| Consumer not indexing               | ES readiness timeout or Kafka unreachable   | Check consumer logs; verify Kafka private IP in compose env                   |
+| Consumer not indexing               | ES readiness timeout, wrong Kafka port, or wrong listener | Check consumer logs; verify `KAFKA_BOOTSTRAP=<private_ip>:19092`; confirm `allow-internal` includes port 19092 |
+| `NoBrokersAvailable` from consumer  | BROKER listener missing or `allow-internal` misconfigured | Verify port 19092 in `allow-internal`; verify `KAFKA_ADVERTISED_LISTENERS` includes `BROKER://<private_ip>:19092` |
 | `docker compose up --build` fails   | Consumer source not synced                  | Re-run `make deploy-elk` — the sync step precedes the build                   |
 | Firewall blocks you after IP change | Dynamic home IP                             | Update `your_ip` in `terraform.tfvars`, run `make apply`                      |

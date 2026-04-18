@@ -7,7 +7,7 @@ Generates fake structured log events and publishes them to Kafka. Runs locally â
 | File               | Purpose               |
 | ------------------ | --------------------- |
 | `producer.py`      | Main script           |
-| `requirements.txt` | `kafka-python==2.0.2` |
+| `requirements.txt` | `kafka-python==2.2.11` |
 
 ## Running
 

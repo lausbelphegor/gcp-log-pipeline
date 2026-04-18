@@ -1,5 +1,14 @@
 # gcp-log-pipeline — build plan
 
+> **Historical note:** This is the original build plan as written before
+> implementation. The final architecture diverged from this plan in
+> several places (notably: three Kafka listeners instead of two, port
+> 19092 added to `allow-internal`, `kafka-python` bumped from 2.0.2 to
+> 2.2.11 for Python 3.12+ compatibility). For the current state of the
+> system, see `CLAUDE.md`, `DECISIONS.md`, and the role-specific
+> `CLAUDE.MD` files. This document is kept as a record of the initial
+> plan.
+
 ## Project identifiers
 
 - GCP project ID: `gcp-log-pipeline`
